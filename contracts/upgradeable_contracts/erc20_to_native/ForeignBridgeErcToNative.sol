@@ -4,8 +4,9 @@ import "../BasicForeignBridge.sol";
 import "../ERC20Bridge.sol";
 import "../OtherSideBridgeStorage.sol";
 import "../ChaiConnector.sol";
+import "../GSNForeignERC20Bridge.sol";
 
-contract ForeignBridgeErcToNative is BasicForeignBridge, ERC20Bridge, OtherSideBridgeStorage, ChaiConnector {
+contract ForeignBridgeErcToNative is OtherSideBridgeStorage, ChaiConnector, GSNForeignERC20Bridge {
     function initialize(
         address _validatorContract,
         address _erc20token,
@@ -52,6 +53,22 @@ contract ForeignBridgeErcToNative is BasicForeignBridge, ERC20Bridge, OtherSideB
         claimValues(_token, _to);
     }
 
+    function onExecuteMessageGSN(address recipient, uint256 amount, uint256 fee) internal returns (bool) {
+        addTotalExecutedPerDay(getCurrentDay(), amount);
+        uint256 unshiftMaxFee = _unshiftValue(fee);
+        uint256 unshiftLeft = _unshiftValue(amount - fee);
+
+        ensureEnoughDai(unshiftMaxFee + unshiftLeft);
+
+        // Send maxTokensFee to paymaster
+        bool first = erc20token().transfer(addressStorage[PAYMASTER], unshiftMaxFee);
+
+        // Send rest of tokens to user
+        bool second = erc20token().transfer(recipient, unshiftLeft);
+
+        return first && second;
+    }
+
     function onExecuteMessage(
         address _recipient,
         uint256 _amount,
@@ -60,6 +77,14 @@ contract ForeignBridgeErcToNative is BasicForeignBridge, ERC20Bridge, OtherSideB
         addTotalExecutedPerDay(getCurrentDay(), _amount);
         uint256 amount = _unshiftValue(_amount);
 
+        ensureEnoughDai(amount);
+
+        bool res = erc20token().transfer(_recipient, amount);
+
+        return res;
+    }
+
+    function ensureEnoughDai(uint256 amount) internal {
         uint256 currentBalance = tokenBalance(erc20token());
 
         // Convert part of Chai tokens back to DAI, if DAI balance is insufficient.
@@ -69,10 +94,6 @@ contract ForeignBridgeErcToNative is BasicForeignBridge, ERC20Bridge, OtherSideB
         if (currentBalance < amount) {
             _convertChaiToDai(amount.sub(currentBalance).add(minDaiTokenBalance()));
         }
-
-        bool res = erc20token().transfer(_recipient, amount);
-
-        return res;
     }
 
     function onFailedMessage(address, uint256, bytes32) internal {
