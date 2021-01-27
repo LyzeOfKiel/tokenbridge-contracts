@@ -25,7 +25,6 @@
     "@0x/subproviders": "^6.1.1",
     "@opengsn/gsn": "^2.1.0",
     "array-flat-polyfill": "^1.0.1",
-    "ethers": "^5.0.24",
     "openzeppelin-solidity": "1.12.0",
     "truffle": "^5.0.35",
     "truffle-flattener": "^1.4.2"
